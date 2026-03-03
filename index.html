@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ROTOSHADE — Interpolated Rotoscope</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@300;400&display=swap');
+  :root{--ink:#0a0a0f;--paper:#f5f2ed;--accent:#7c5cbf;--gray:#777;}
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--ink);color:var(--paper);font-family:'IBM Plex Mono',monospace;min-height:100vh;overflow-x:hidden;}
+  header{display:flex;align-items:baseline;gap:16px;padding:20px 36px 16px;border-bottom:1px solid #222;}
+  header h1{font-family:'Bebas Neue',sans-serif;font-size:2.4rem;letter-spacing:.12em;color:var(--paper);}
+  header span{font-size:.62rem;color:var(--gray);letter-spacing:.2em;text-transform:uppercase;}
+  .layout{display:grid;grid-template-columns:300px 1fr;height:calc(100vh - 65px);}
+  .sidebar{border-right:1px solid #222;padding:18px;overflow-y:auto;display:flex;flex-direction:column;gap:20px;}
+  .sidebar::-webkit-scrollbar{width:4px;}
+  .sidebar::-webkit-scrollbar-track{background:transparent;}
+  .sidebar::-webkit-scrollbar-thumb{background:#222;border-radius:2px;}
+  .slabel{font-size:.55rem;letter-spacing:.3em;text-transform:uppercase;color:var(--accent);margin-bottom:8px;}
+  .upload-zone{border:1px dashed #333;border-radius:3px;padding:14px;text-align:center;cursor:pointer;transition:all .2s;position:relative;background:#0d0d14;}
+  .upload-zone:hover,.upload-zone.drag-over{border-color:var(--accent);background:#131320;}
+  .upload-zone.has-file{border-color:#3a3a5c;border-style:solid;}
+  .upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+  .upload-icon{font-size:1.3rem;margin-bottom:5px;opacity:.4;}
+  .upload-zone p{font-size:.6rem;color:var(--gray);line-height:1.5;}
+  .upload-zone .fname{color:var(--paper);font-size:.62rem;margin-top:3px;word-break:break-all;}
+  .cg{display:flex;flex-direction:column;gap:12px;}
+  .cr{display:flex;flex-direction:column;gap:4px;}
+  .cr label{display:flex;justify-content:space-between;font-size:.6rem;color:var(--gray);}
+  .cr label span{color:var(--paper);}
+  input[type=range]{-webkit-appearance:none;width:100%;height:2px;background:#333;outline:none;border-radius:1px;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;background:var(--accent);cursor:pointer;}
+  .tr{display:flex;justify-content:space-between;align-items:center;font-size:.6rem;color:var(--gray);}
+  .tog{width:32px;height:16px;background:#333;border-radius:8px;cursor:pointer;position:relative;transition:background .2s;flex-shrink:0;}
+  .tog.on{background:var(--accent);}
+  .tog::after{content:'';position:absolute;width:10px;height:10px;border-radius:50%;background:white;top:3px;left:3px;transition:left .2s;}
+  .tog.on::after{left:19px;}
+  .desc{font-size:.5rem;color:var(--gray);line-height:1.4;padding:6px 8px;background:#0a0a14;border-radius:2px;border-left:2px solid #2a2a40;}
+  .mode-pills{display:flex;gap:1px;background:#1a1a26;border-radius:3px;overflow:hidden;}
+  .mpill{flex:1;padding:6px 3px;background:transparent;border:none;color:var(--gray);font-family:'IBM Plex Mono',monospace;font-size:.5rem;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;transition:all .2s;text-align:center;}
+  .mpill.active{background:#2a2a40;color:var(--paper);}
+  .mpill:hover:not(.active){color:var(--paper);}
+  /* export */
+  .etabs{display:flex;gap:1px;background:#1a1a26;border-radius:3px;overflow:hidden;}
+  .etab{flex:1;padding:7px 3px;background:transparent;border:none;color:var(--gray);font-family:'IBM Plex Mono',monospace;font-size:.5rem;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;transition:all .2s;text-align:center;}
+  .etab.active{background:var(--accent);color:white;}
+  .etab:hover:not(.active){color:var(--paper);}
+  .enote{font-size:.55rem;color:var(--gray);line-height:1.5;padding:6px 8px;background:#0d0d14;border-radius:2px;border-left:2px solid #2a2a40;}
+  .seq-progress{width:100%;height:3px;background:#222;border-radius:2px;overflow:hidden;display:none;}
+  .seq-fill{height:100%;background:var(--accent);width:0%;}
+  .seq-info{font-size:.55rem;color:var(--gray);display:none;}
+  .btn-process{width:100%;padding:12px;background:var(--accent);color:white;border:none;font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:.2em;cursor:pointer;border-radius:2px;transition:background .2s,transform .1s;margin-top:4px;}
+  .btn-process:hover{background:#9070d8;}
+  .btn-process:active{transform:scale(.98);}
+  .btn-process:disabled{background:#333;color:#555;cursor:not-allowed;}
+  .btn-exp{width:100%;padding:9px;background:transparent;color:var(--accent);border:1px solid var(--accent);font-family:'IBM Plex Mono',monospace;font-size:.58rem;letter-spacing:.12em;cursor:pointer;border-radius:2px;transition:all .2s;text-transform:uppercase;display:none;}
+  .btn-exp:hover{background:var(--accent);color:white;}
+  /* preview */
+  .preview-area{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px;gap:14px;background:#050508;position:relative;}
+  .canvas-wrap{position:relative;display:flex;align-items:center;justify-content:center;width:100%;max-width:680px;}
+  canvas{max-width:100%;border:1px solid #1a1a2e;display:block;border-radius:2px;}
+  .checker{background-image:linear-gradient(45deg,#1e1e1e 25%,transparent 25%),linear-gradient(-45deg,#1e1e1e 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#1e1e1e 75%),linear-gradient(-45deg,transparent 75%,#1e1e1e 75%);background-size:14px 14px;background-position:0 0,0 7px,7px -7px,-7px 0px;border-radius:2px;padding:1px;}
+  #placeholder{width:640px;height:360px;border:1px dashed #222;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;border-radius:2px;max-width:100%;}
+  #placeholder .big{font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:.2em;color:#2a2a3a;}
+  #placeholder p{font-size:.56rem;letter-spacing:.15em;text-transform:uppercase;color:#333;}
+  .playback{display:flex;gap:10px;align-items:center;}
+  .btn-play{background:none;border:1px solid #333;color:var(--paper);font-family:'IBM Plex Mono',monospace;font-size:.6rem;padding:7px 16px;cursor:pointer;letter-spacing:.12em;text-transform:uppercase;border-radius:2px;transition:all .2s;display:none;}
+  .btn-play:hover{border-color:var(--accent);color:var(--accent);}
+  .progbar{width:180px;height:2px;background:#222;border-radius:1px;overflow:hidden;display:none;}
+  .progfill{height:100%;background:var(--accent);width:0%;}
+  .timedis{font-size:.58rem;color:var(--gray);display:none;}
+  .statusbar{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-size:.56rem;letter-spacing:.2em;text-transform:uppercase;color:var(--gray);white-space:nowrap;}
+  /* preset chips */
+  .preset-row{display:flex;gap:6px;flex-wrap:wrap;}
+  .preset-chip{padding:5px 12px;background:transparent;border:1px solid #333;color:var(--gray);font-family:'IBM Plex Mono',monospace;font-size:.52rem;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;border-radius:2px;transition:all .2s;}
+  .preset-chip:hover{border-color:var(--accent);color:var(--paper);}
+  .preset-chip.active{background:var(--accent);border-color:var(--accent);color:white;}
+</style>
+</head>
+<body>
+<header>
+  <h1>ROTOSHADE</h1>
+  <span>Interpolated Rotoscope v1</span>
+</header>
+<div class="layout">
+<div class="sidebar">
+
+  <!-- 01 SOURCE -->
+  <div>
+    <div class="slabel">01 — Source Video</div>
+    <div class="upload-zone" id="srcZone">
+      <input type="file" id="srcInput" accept="video/*">
+      <div class="upload-icon">◈</div><p>Drop video file</p>
+      <div class="fname" id="srcName"></div>
+    </div>
+  </div>
+
+  <!-- 02 CUT-OUT EDGE -->
+  <div>
+    <div class="slabel">02 — Cut-Out Edge</div>
+    <div class="desc">Sobel edge detection creates the rotoscope outline. Posterize flattens color into graphic bands.</div>
+    <div class="cg" style="margin-top:8px;">
+      <div class="cr">
+        <label>Edge detect <span id="edgeDetectVal">0.90</span></label>
+        <input type="range" id="edgeDetect" min="0" max="1" step="0.01" value="0.9" oninput="updateVal('edgeDetectVal',parseFloat(this.value).toFixed(2));schedulePreview()">
+      </div>
+      <div class="cr">
+        <label>Edge darken <span id="edgeDarkenVal">0.70</span></label>
+        <input type="range" id="edgeDarken" min="0" max="1" step="0.01" value="0.7" oninput="updateVal('edgeDarkenVal',parseFloat(this.value).toFixed(2));schedulePreview()">
+      </div>
+      <div class="cr">
+        <label>Posterize <span id="posterizeVal">5</span></label>
+        <input type="range" id="posterize" min="2" max="32" step="1" value="5" oninput="updateVal('posterizeVal',this.value);schedulePreview()">
+      </div>
+      <div class="desc" style="font-size:.48rem;">2 = stark two-tone. 5 = Scanner Darkly. 6 = Waking Life. 32 = off.</div>
+    </div>
+  </div>
+
+  <!-- 03 COLOR GRADE -->
+  <div>
+    <div class="slabel">03 — Color Grade</div>
+    <div class="cg">
+      <div class="cr">
+        <label>Desaturation <span id="desaturationVal">0.10</span></label>
+        <input type="range" id="desaturation" min="0" max="1" step="0.01" value="0.1" oninput="updateVal('desaturationVal',parseFloat(this.value).toFixed(2));schedulePreview()">
+      </div>
+      <div class="cr">
+        <label>Contrast <span id="contrastVal">1.30</span></label>
+        <input type="range" id="contrast" min="0.5" max="2.0" step="0.01" value="1.3" oninput="updateVal('contrastVal',parseFloat(this.value).toFixed(2));schedulePreview()">
+      </div>
+      <div class="cr">
+        <label>Brightness <span id="brightnessVal">0</span></label>
+        <input type="range" id="brightness" min="-50" max="50" step="1" value="0" oninput="updateVal('brightnessVal',this.value);schedulePreview()">
+      </div>
+      <div class="cr">
+        <label>Temperature <span id="temperatureVal">0</span></label>
+        <input type="range" id="temperature" min="-50" max="50" step="1" value="0" oninput="updateVal('temperatureVal',this.value);schedulePreview()">
+      </div>
+      <div class="cr">
+        <label>Tint strength <span id="tintStrengthVal">0.00</span></label>
+        <input type="range" id="tintStrength" min="0" max="0.5" step="0.01" value="0" oninput="updateVal('tintStrengthVal',parseFloat(this.value).toFixed(2));schedulePreview()">
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <label style="font-size:.6rem;color:var(--gray);">Tint hue</label>
+        <input type="color" id="tintColor" value="#667788" style="width:28px;height:20px;padding:0;border:1px solid #333;background:none;cursor:pointer;border-radius:2px;" oninput="schedulePreview()">
+      </div>
+    </div>
+  </div>
+
+  <!-- 04 FILM TEXTURE -->
+  <div>
+    <div class="slabel">04 — Film Texture</div>
+    <div class="cg">
+      <div class="cr">
+        <label>Grain amount <span id="grainAmountVal">0.05</span></label>
+        <input type="range" id="grainAmount" min="0" max="1" step="0.01" value="0.05" oninput="updateVal('grainAmountVal',parseFloat(this.value).toFixed(2));schedulePreview()">
+      </div>
+      <div class="cr">
+        <label>Grain size <span id="grainSizeVal">1</span></label>
+        <input type="range" id="grainSize" min="1" max="4" step="1" value="1" oninput="updateVal('grainSizeVal',this.value);schedulePreview()">
+      </div>
+      <div class="cr">
+        <label>Scan lines <span id="scanLinesVal">0.00</span></label>
+        <input type="range" id="scanLines" min="0" max="0.5" step="0.01" value="0" oninput="updateVal('scanLinesVal',parseFloat(this.value).toFixed(2));schedulePreview()">
+      </div>
+      <div class="cr">
+        <label>Scan spacing <span id="scanSpacingVal">3</span></label>
+        <input type="range" id="scanSpacing" min="1" max="8" step="1" value="3" oninput="updateVal('scanSpacingVal',this.value);schedulePreview()">
+      </div>
+    </div>
+  </div>
+
+  <!-- 05 STIFF MOTION -->
+  <div>
+    <div class="slabel">05 — Stiff Motion</div>
+    <div class="desc">Reduces effective frame rate for that cut-out animation feel. Mimics the choppy hand-traced cadence of rotoscoped film.</div>
+    <div class="cg" style="margin-top:8px;">
+      <div class="cr">
+        <label>Frame hold <span id="frameHoldVal">2</span></label>
+        <input type="range" id="frameHold" min="1" max="12" step="1" value="2" oninput="updateVal('frameHoldVal',this.value);schedulePreview()">
+      </div>
+      <div class="tr"><span>Enable stiff mode</span><div class="tog on" id="toggleStiff" onclick="this.classList.toggle('on')"></div></div>
+    </div>
+  </div>
+
+  <!-- 06 FINAL -->
+  <div>
+    <div class="slabel">06 — Final</div>
+    <div class="cg">
+      <div class="cr">
+        <label>Vignette <span id="vignetteVal">0.15</span></label>
+        <input type="range" id="vignette" min="0" max="1" step="0.01" value="0.15" oninput="updateVal('vignetteVal',parseFloat(this.value).toFixed(2));schedulePreview()">
+      </div>
+      <div class="cr">
+        <label>Letterbox <span id="letterboxVal">0.000</span></label>
+        <input type="range" id="letterbox" min="0" max="0.15" step="0.005" value="0" oninput="updateVal('letterboxVal',parseFloat(this.value).toFixed(3));schedulePreview()">
+      </div>
+      <div class="tr" style="margin-top:6px;"><span>Preview alpha (checkerboard)</span><div class="tog" id="alphaToggle" onclick="this.classList.toggle('on');toggleAlphaBg()"></div></div>
+    </div>
+  </div>
+
+  <!-- 07 PRESETS -->
+  <div>
+    <div class="slabel">07 — Presets</div>
+    <div class="preset-row">
+      <div class="preset-chip active" data-preset="scanner" onclick="applyPreset('scanner')">Scanner Darkly</div>
+      <div class="preset-chip" data-preset="waking" onclick="applyPreset('waking')">Waking Life</div>
+    </div>
+  </div>
+
+  <!-- 08 EXPORT -->
+  <div>
+    <div class="slabel">08 — Export</div>
+    <div class="cg">
+      <div class="etabs">
+        <button class="etab active" id="expTab0" onclick="setExportMode(0)">Composite</button>
+        <button class="etab" id="expTab1" onclick="setExportMode(1)">Edge Matte</button>
+      </div>
+      <div class="enote" id="exportNote">Full processed frame · PNG</div>
+      <div class="cr">
+        <label>Sequence FPS <span id="fpsVal">24</span></label>
+        <input type="range" id="exportFps" min="12" max="30" step="1" value="24" oninput="updateVal('fpsVal',this.value)">
+      </div>
+      <div class="seq-progress" id="seqProgress"><div class="seq-fill" id="seqFill"></div></div>
+      <div class="seq-info" id="seqInfo"></div>
+      <button class="btn-exp" id="exportFrameBtn" onclick="exportCurrentFrame()">↓ Export Frame (PNG)</button>
+      <button class="btn-exp" id="exportSeqBtn" onclick="exportSequence()">↓ Export PNG Sequence → Choose Folder</button>
+      <button class="btn-exp" id="exportSettingsBtn" onclick="exportSettings()">↓ Export Settings (TXT)</button>
+      <button class="btn-exp" id="importSettingsBtn" style="display:block" onclick="document.getElementById('settingsFileInput').click()">↑ Import Settings (TXT)</button>
+      <input type="file" id="settingsFileInput" accept=".txt" style="display:none" onchange="handleSettingsImport(this)">
+    </div>
+  </div>
+
+  <button class="btn-process" id="processBtn" onclick="processVideo()" disabled>PROCESS ROTOSCOPE</button>
+
+</div>
+
+<!-- PREVIEW -->
+<div class="preview-area" id="previewArea">
+  <div class="canvas-wrap" id="canvasWrap">
+    <div id="placeholder">
+      <div class="big">LOAD FOOTAGE</div>
+      <p>Upload a video to begin</p>
+    </div>
+    <canvas id="outputCanvas" style="display:none"></canvas>
+  </div>
+  <div class="playback">
+    <button class="btn-play" id="playBtn" onclick="togglePlay()">▶ Play</button>
+    <div class="progbar" id="progBar"><div class="progfill" id="progFill"></div></div>
+    <div class="timedis" id="timeDis">0:00 / 0:00</div>
+  </div>
+  <div class="statusbar" id="statusBar">AWAITING INPUT</div>
+</div>
+</div>
+
+<video id="srcVideo" style="display:none" crossorigin="anonymous" loop playsinline></video>
+<canvas id="wkSrc" style="display:none"></canvas>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────────
+let srcReady=false, isPlaying=false, processed=false, isExporting=false;
+let animFrame=null, exportModeNum=0;
+let srcBaseName='video';
+let holdCounter=0, heldFrame=false;
+function stripExt(n){return n.replace(/\.[^/.]+$/,'').replace(/[^a-zA-Z0-9_\-]/g,'_').slice(0,40);}
+
+const srcVideo   = document.getElementById('srcVideo');
+const outCanvas  = document.getElementById('outputCanvas');
+const wkSrc      = document.getElementById('wkSrc');
+const outCtx = outCanvas.getContext('2d',{willReadFrequently:true});
+const sCtx   = wkSrc.getContext('2d',{willReadFrequently:true});
+
+// Held frame canvas (for stiff motion frame-skipping)
+const heldCanvas = document.createElement('canvas');
+const heldCtx    = heldCanvas.getContext('2d',{willReadFrequently:true});
+
+// ── UPLOAD ─────────────────────────────────────────────────────
+(function(){
+  const input=document.getElementById('srcInput');
+  const zone=document.getElementById('srcZone');
+  const nameEl=document.getElementById('srcName');
+  input.addEventListener('change',e=>{
+    const file=e.target.files[0]; if(!file)return;
+    srcVideo.src=URL.createObjectURL(file); srcVideo.load();
+    nameEl.textContent=file.name; zone.classList.add('has-file');
+    srcBaseName=stripExt(file.name);
+    srcVideo.addEventListener('loadeddata',()=>{
+      srcReady=true; checkReady();
+    },{once:true});
+  });
+  zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('drag-over');});
+  zone.addEventListener('dragleave',()=>zone.classList.remove('drag-over'));
+  zone.addEventListener('drop',e=>{
+    e.preventDefault(); zone.classList.remove('drag-over');
+    const file=e.dataTransfer.files[0];
+    if(file&&file.type.startsWith('video/')){input.files=e.dataTransfer.files;input.dispatchEvent(new Event('change'));}
+  });
+})();
+
+function checkReady(){
+  if(srcReady){
+    document.getElementById('processBtn').disabled=false;
+    document.getElementById('statusBar').textContent='READY — CLICK PROCESS';
+  }
+}
+
+// ── HELPERS ────────────────────────────────────────────────────
+function updateVal(id,val){document.getElementById(id).textContent=val;}
+function ctrl(id){return parseFloat(document.getElementById(id).value);}
+function ctrlInt(id){return parseInt(document.getElementById(id).value);}
+function ctrlColor(id){return document.getElementById(id).value;}
+function clamp(v){return Math.max(0,Math.min(255,Math.round(v)));}
+
+function hexToRgb(hex){
+  return{
+    r:parseInt(hex.slice(1,3),16),
+    g:parseInt(hex.slice(3,5),16),
+    b:parseInt(hex.slice(5,7),16)
+  };
+}
+
+let previewPending=false;
+function schedulePreview(){
+  if(!processed)return;
+  if(!previewPending){
+    previewPending=true;
+    requestAnimationFrame(()=>{previewPending=false; /* render will pick up */});
+  }
+}
+
+function toggleAlphaBg(){
+  const on=document.getElementById('alphaToggle').classList.contains('on');
+  document.getElementById('canvasWrap').classList.toggle('checker',on);
+}
+
+// ── PROCESS ────────────────────────────────────────────────────
+function processVideo(){
+  if(!srcReady)return;
+  const W=srcVideo.videoWidth||640, H=srcVideo.videoHeight||360;
+  [outCanvas,wkSrc,heldCanvas].forEach(c=>{c.width=W;c.height=H;});
+  document.getElementById('placeholder').style.display='none';
+  outCanvas.style.display='block';
+  srcVideo.currentTime=0;
+  processed=true; heldFrame=false; holdCounter=0;
+  if(animFrame)cancelAnimationFrame(animFrame);
+  animFrame=requestAnimationFrame(renderLoop);
+  document.getElementById('playBtn').style.display='inline-block';
+  document.getElementById('progBar').style.display='block';
+  document.getElementById('timeDis').style.display='block';
+  document.getElementById('exportFrameBtn').style.display='block';
+  document.getElementById('exportSeqBtn').style.display='block';
+  document.getElementById('exportSettingsBtn').style.display='block';
+  document.getElementById('statusBar').textContent='PRESS PLAY TO ANIMATE';
+}
+
+// ── RENDER LOOP ────────────────────────────────────────────────
+function renderLoop(){
+  if(!processed)return;
+
+  const stiffMode=document.getElementById('toggleStiff').classList.contains('on');
+  const fHold=ctrlInt('frameHold');
+
+  if(stiffMode && fHold>1){
+    holdCounter++;
+    if(holdCounter>=fHold || !heldFrame){
+      holdCounter=0;
+      drawProcessedFrame(outCtx, outCanvas.width, outCanvas.height, false);
+      heldCtx.drawImage(outCanvas,0,0);
+      heldFrame=true;
+    } else {
+      // Redraw held frame
+      outCtx.drawImage(heldCanvas,0,0);
+    }
+  } else {
+    drawProcessedFrame(outCtx, outCanvas.width, outCanvas.height, false);
+    heldCtx.drawImage(outCanvas,0,0);
+    heldFrame=true;
+  }
+
+  if(isPlaying){
+    const dur=srcVideo.duration||1, t=srcVideo.currentTime;
+    document.getElementById('progFill').style.width=(t/dur*100)+'%';
+    const fmt=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+    document.getElementById('timeDis').textContent=`${fmt(t)} / ${fmt(dur)}`;
+  }
+  animFrame=requestAnimationFrame(renderLoop);
+}
+
+// ── CORE DRAW ──────────────────────────────────────────────────
+function drawProcessedFrame(ctx, W, H, alphaExport){
+  // Draw source frame
+  sCtx.drawImage(srcVideo, 0, 0, W, H);
+  const imgData=sCtx.getImageData(0,0,W,H);
+  const px=imgData.data;
+
+  const desat     = ctrl('desaturation');
+  const contr     = ctrl('contrast');
+  const temp      = ctrl('temperature');
+  const tintCol   = hexToRgb(ctrlColor('tintColor'));
+  const tintStr   = ctrl('tintStrength');
+  const bright    = ctrl('brightness');
+  const edgeDet   = ctrl('edgeDetect');
+  const edgeDark  = ctrl('edgeDarken');
+  const posterLvl = ctrlInt('posterize');
+  const grainAmt  = ctrl('grainAmount');
+  const grainSz   = ctrlInt('grainSize');
+  const scanOp    = ctrl('scanLines');
+  const scanSp    = ctrlInt('scanSpacing');
+  const vig       = ctrl('vignette');
+  const lb        = ctrl('letterbox');
+
+  // ── Step 1: Edge detection (Sobel) ──
+  let edgeMap=null;
+  if(edgeDet>0.001){
+    edgeMap=new Float32Array(W*H);
+    for(let y=1;y<H-1;y++){
+      for(let x=1;x<W-1;x++){
+        const lum=i=>{return 0.299*px[i]+0.587*px[i+1]+0.114*px[i+2];};
+        const tl=lum(((y-1)*W+(x-1))*4);
+        const tc=lum(((y-1)*W+x)*4);
+        const tr=lum(((y-1)*W+(x+1))*4);
+        const ml=lum((y*W+(x-1))*4);
+        const mr=lum((y*W+(x+1))*4);
+        const bl=lum(((y+1)*W+(x-1))*4);
+        const bc=lum(((y+1)*W+x)*4);
+        const br=lum(((y+1)*W+(x+1))*4);
+        const gx=-tl-2*ml-bl+tr+2*mr+br;
+        const gy=-tl-2*tc-tr+bl+2*bc+br;
+        edgeMap[y*W+x]=Math.sqrt(gx*gx+gy*gy)/255;
+      }
+    }
+  }
+
+  // ── Step 2: Color processing (per pixel) ──
+  for(let i=0;i<px.length;i+=4){
+    let r=px[i],g=px[i+1],b=px[i+2];
+
+    // Brightness
+    r+=bright; g+=bright; b+=bright;
+
+    // Temperature
+    if(temp!==0){ r+=temp*0.5; b-=temp*0.5; }
+
+    // Desaturate
+    const lum=0.299*r+0.587*g+0.114*b;
+    r=r+(lum-r)*desat;
+    g=g+(lum-g)*desat;
+    b=b+(lum-b)*desat;
+
+    // Contrast
+    r=((r-128)*contr)+128;
+    g=((g-128)*contr)+128;
+    b=((b-128)*contr)+128;
+
+    // Tint overlay
+    if(tintStr>0.001){
+      r=r*(1-tintStr)+tintCol.r*tintStr;
+      g=g*(1-tintStr)+tintCol.g*tintStr;
+      b=b*(1-tintStr)+tintCol.b*tintStr;
+    }
+
+    // Posterize
+    if(posterLvl<32){
+      const step=255/(posterLvl-1);
+      r=Math.round(r/step)*step;
+      g=Math.round(g/step)*step;
+      b=Math.round(b/step)*step;
+    }
+
+    // Edge darkening
+    if(edgeMap){
+      const pi=(i/4);
+      const edge=edgeMap[pi]||0;
+      const edgeStrength=Math.min(1,edge*edgeDet*5);
+      const darken=1-edgeStrength*edgeDark;
+      r*=darken; g*=darken; b*=darken;
+    }
+
+    px[i]=clamp(r); px[i+1]=clamp(g); px[i+2]=clamp(b);
+    // Alpha: full opaque for composite, edge-based for matte export
+    if(alphaExport && exportModeNum===1){
+      // Edge matte: edge strength → alpha, rest transparent
+      const pi=(i/4);
+      const edge=edgeMap?(edgeMap[pi]||0):0;
+      const a=Math.min(1,edge*edgeDet*5)*edgeDark;
+      px[i]=0; px[i+1]=0; px[i+2]=0;
+      px[i+3]=clamp(a*255);
+    }
+  }
+
+  sCtx.putImageData(imgData,0,0);
+
+  // ── Draw to output ──
+  if(!alphaExport){
+    ctx.fillStyle='#0a0c10';
+    ctx.fillRect(0,0,W,H);
+  } else {
+    ctx.clearRect(0,0,W,H);
+  }
+
+  ctx.drawImage(wkSrc,0,0);
+
+  // ── Grain overlay ──
+  if(grainAmt>0.01 && !alphaExport){
+    const gd=ctx.getImageData(0,0,W,H);
+    const gp=gd.data;
+    const intensity=grainAmt*60;
+    for(let y=0;y<H;y+=grainSz){
+      for(let x=0;x<W;x+=grainSz){
+        const noise=(Math.random()-0.5)*intensity;
+        for(let dy=0;dy<grainSz&&y+dy<H;dy++){
+          for(let dx=0;dx<grainSz&&x+dx<W;dx++){
+            const idx=((y+dy)*W+(x+dx))*4;
+            gp[idx]=clamp(gp[idx]+noise);
+            gp[idx+1]=clamp(gp[idx+1]+noise);
+            gp[idx+2]=clamp(gp[idx+2]+noise);
+          }
+        }
+      }
+    }
+    ctx.putImageData(gd,0,0);
+  }
+
+  // ── Scan lines ──
+  if(scanOp>0.005 && !alphaExport){
+    ctx.save();
+    ctx.fillStyle=`rgba(0,0,0,${scanOp})`;
+    for(let y=0;y<H;y+=scanSp*2){
+      ctx.fillRect(0,y,W,scanSp);
+    }
+    ctx.restore();
+  }
+
+  // ── Vignette ──
+  if(vig>0.01 && !alphaExport){
+    const vigGrad=ctx.createRadialGradient(W/2,H/2,W*0.2,W/2,H/2,W*0.65);
+    vigGrad.addColorStop(0,'rgba(0,0,0,0)');
+    vigGrad.addColorStop(1,`rgba(0,0,0,${vig})`);
+    ctx.fillStyle=vigGrad;
+    ctx.fillRect(0,0,W,H);
+  }
+
+  // ── Letterbox ──
+  if(lb>0.001 && !alphaExport){
+    const barH=H*lb;
+    ctx.fillStyle='#000';
+    ctx.fillRect(0,0,W,barH);
+    ctx.fillRect(0,H-barH,W,barH);
+  }
+}
+
+// ── PLAYBACK ───────────────────────────────────────────────────
+function togglePlay(){
+  const btn=document.getElementById('playBtn');
+  if(!isPlaying){
+    srcVideo.play(); isPlaying=true;
+    btn.textContent='⏸ Pause';
+    document.getElementById('statusBar').textContent='PLAYING';
+  } else {
+    srcVideo.pause(); isPlaying=false;
+    btn.textContent='▶ Play';
+    document.getElementById('statusBar').textContent='PAUSED';
+  }
+}
+
+// ── EXPORT MODE ────────────────────────────────────────────────
+const exportNotes=[
+  'Full processed frame · PNG',
+  'Edge matte only · black edges on transparent · alpha PNG'
+];
+function setExportMode(n){
+  exportModeNum=n;
+  ['expTab0','expTab1'].forEach((id,i)=>document.getElementById(id).classList.toggle('active',i===n));
+  document.getElementById('exportNote').textContent=exportNotes[n];
+}
+
+// ── EXPORT: SINGLE FRAME ───────────────────────────────────────
+function exportCurrentFrame(){
+  if(!processed)return;
+  const W=outCanvas.width,H=outCanvas.height;
+  const ec=document.createElement('canvas');ec.width=W;ec.height=H;
+  const ex=ec.getContext('2d');
+  buildExportFrame(ex,W,H);
+  ec.toBlob(blob=>{
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=`rotoshade_${srcBaseName}_${['composite','edge_matte'][exportModeNum]}_frame.png`;
+    a.click();
+  },'image/png');
+}
+
+function buildExportFrame(ctx,W,H){
+  // For export, temporarily draw without stiff-motion hold
+  const alphaExport=(exportModeNum===1);
+  sCtx.drawImage(srcVideo,0,0,W,H);
+  drawProcessedFrame(ctx,W,H,alphaExport);
+}
+
+// ── EXPORT: PNG SEQUENCE → FOLDER ──────────────────────────────
+async function exportSequence(){
+  if(!processed||isExporting)return;
+  isExporting=true;
+  const fps=ctrlInt('exportFps');
+  const dur=srcVideo.duration;
+  const total=Math.floor(dur*fps);
+  const W=outCanvas.width,H=outCanvas.height;
+  const sp=document.getElementById('seqProgress');
+  const sf=document.getElementById('seqFill');
+  const si=document.getElementById('seqInfo');
+  sp.style.display='block'; si.style.display='block';
+
+  const layerLabel=['composite','edge_matte'][exportModeNum];
+  const seqName=`rotoshade_${srcBaseName}_${layerLabel}`;
+
+  if(!window.showDirectoryPicker){
+    si.textContent='Browser does not support folder picker — try Chrome or Edge.';
+    isExporting=false; return;
+  }
+
+  let dirHandle;
+  try{
+    dirHandle=await window.showDirectoryPicker({id:'rotoshade-export',mode:'readwrite',startIn:'downloads'});
+  }catch(e){
+    si.textContent='Folder selection cancelled.';
+    isExporting=false; return;
+  }
+
+  let subDir;
+  try{
+    subDir=await dirHandle.getDirectoryHandle(seqName,{create:true});
+  }catch(e){
+    si.textContent='Could not create subfolder.';
+    isExporting=false; return;
+  }
+
+  const wasPlaying=isPlaying;
+  if(isPlaying)togglePlay();
+  if(animFrame){cancelAnimationFrame(animFrame);animFrame=null;}
+
+  const ec=document.createElement('canvas');ec.width=W;ec.height=H;
+  const ex=ec.getContext('2d',{willReadFrequently:true});
+
+  for(let f=0;f<total;f++){
+    const t=f/fps;
+    srcVideo.currentTime=t;
+    await waitSeeked();
+    buildExportFrame(ex,W,H);
+
+    const fname=`${seqName}_${String(f).padStart(5,'0')}.png`;
+    const blob=await new Promise(res=>ec.toBlob(res,'image/png'));
+    const arrayBuf=await blob.arrayBuffer();
+    const fileHandle=await subDir.getFileHandle(fname,{create:true});
+    const writable=await fileHandle.createWritable();
+    await writable.write(arrayBuf);
+    await writable.close();
+
+    sf.style.width=((f+1)/total*100)+'%';
+    si.textContent=`Writing frame ${f+1} / ${total} → ${fname}`;
+    await new Promise(r=>setTimeout(r,4));
+  }
+
+  isExporting=false;
+  si.textContent=`✓ Done — ${total} frames written to /${seqName}/`;
+  document.getElementById('statusBar').textContent='EXPORT COMPLETE';
+  if(wasPlaying)togglePlay(); else {animFrame=requestAnimationFrame(renderLoop);}
+}
+
+function waitSeeked(){
+  return new Promise(res=>{
+    let done=false;
+    setTimeout(res,500);
+    srcVideo.addEventListener('seeked',()=>{if(!done){done=true;res();}},{once:true});
+  });
+}
+
+// ── SETTINGS EXPORT ────────────────────────────────────────────
+function exportSettings(){
+  if(!processed)return;
+  const layerLabel=['composite','edge_matte'][exportModeNum];
+  const baseName=`rotoshade_${srcBaseName}_${layerLabel}`;
+  const fps=ctrlInt('exportFps');
+  const dur=srcVideo.duration||0;
+  const total=Math.floor(dur*fps);
+  const now=new Date().toISOString().replace('T',' ').slice(0,19);
+
+  const txt=[
+    `ROTOSHADE — Export Settings`,
+    `Generated: ${now}`,
+    ``,
+    `── SOURCE ─────────────────────────`,
+    `Video          : ${srcBaseName}`,
+    ``,
+    `── OUTPUT ─────────────────────────`,
+    `Export name    : ${baseName}`,
+    `Layer mode     : ${['Composite','Edge Matte'][exportModeNum]}`,
+    `Total frames   : ${total}`,
+    `Frame rate     : ${fps} fps`,
+    ``,
+    `── CUT-OUT EDGE ───────────────────`,
+    `Edge detect    : ${ctrl('edgeDetect').toFixed(2)}`,
+    `Edge darken    : ${ctrl('edgeDarken').toFixed(2)}`,
+    `Posterize      : ${ctrlInt('posterize')}`,
+    ``,
+    `── COLOR GRADE ────────────────────`,
+    `Desaturation   : ${ctrl('desaturation').toFixed(2)}`,
+    `Contrast       : ${ctrl('contrast').toFixed(2)}`,
+    `Brightness     : ${ctrl('brightness')}`,
+    `Temperature    : ${ctrl('temperature')}`,
+    `Tint strength  : ${ctrl('tintStrength').toFixed(2)}`,
+    `Tint color     : ${ctrlColor('tintColor')}`,
+    ``,
+    `── FILM TEXTURE ───────────────────`,
+    `Grain amount   : ${ctrl('grainAmount').toFixed(2)}`,
+    `Grain size     : ${ctrlInt('grainSize')}`,
+    `Scan lines     : ${ctrl('scanLines').toFixed(2)}`,
+    `Scan spacing   : ${ctrlInt('scanSpacing')}`,
+    ``,
+    `── STIFF MOTION ───────────────────`,
+    `Frame hold     : ${ctrlInt('frameHold')}`,
+    `Stiff mode     : ${document.getElementById('toggleStiff').classList.contains('on')?'on':'off'}`,
+    ``,
+    `── FINAL ──────────────────────────`,
+    `Vignette       : ${ctrl('vignette').toFixed(2)}`,
+    `Letterbox      : ${ctrl('letterbox').toFixed(3)}`,
+  ].join('\n');
+
+  const blob=new Blob([txt],{type:'text/plain'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`${baseName}_settings.txt`;
+  a.click();
+}
+
+// ── SETTINGS IMPORT ────────────────────────────────────────────
+function handleSettingsImport(input){
+  const file=input.files[0];
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=function(e){importSettings(e.target.result); input.value='';};
+  reader.readAsText(file);
+}
+
+function importSettings(txt){
+  const lines=txt.split('\n');
+  let section='';
+  for(const line of lines){
+    if(line.includes('── SOURCE'))       section='source';
+    else if(line.includes('── OUTPUT'))  section='output';
+    else if(line.includes('── CUT-OUT')) section='edge';
+    else if(line.includes('── COLOR'))   section='color';
+    else if(line.includes('── FILM'))    section='texture';
+    else if(line.includes('── STIFF'))   section='stiff';
+    else if(line.includes('── FINAL'))   section='final';
+
+    const idx=line.indexOf(':');
+    if(idx<0)continue;
+    const k=line.slice(0,idx).trim();
+    const v=line.slice(idx+1).trim();
+
+    const setSlider=(id,val,valId,fmt)=>{
+      const el=document.getElementById(id);
+      if(!el)return;
+      el.value=val;
+      if(valId)updateVal(valId,fmt?fmt(val):val);
+    };
+
+    if(section==='edge'){
+      if(k==='Edge detect')  setSlider('edgeDetect',parseFloat(v),'edgeDetectVal',v=>parseFloat(v).toFixed(2));
+      if(k==='Edge darken')  setSlider('edgeDarken',parseFloat(v),'edgeDarkenVal',v=>parseFloat(v).toFixed(2));
+      if(k==='Posterize')    setSlider('posterize',parseInt(v),'posterizeVal');
+    }
+    if(section==='color'){
+      if(k==='Desaturation') setSlider('desaturation',parseFloat(v),'desaturationVal',v=>parseFloat(v).toFixed(2));
+      if(k==='Contrast')     setSlider('contrast',parseFloat(v),'contrastVal',v=>parseFloat(v).toFixed(2));
+      if(k==='Brightness')   setSlider('brightness',parseInt(v),'brightnessVal');
+      if(k==='Temperature')  setSlider('temperature',parseInt(v),'temperatureVal');
+      if(k==='Tint strength')setSlider('tintStrength',parseFloat(v),'tintStrengthVal',v=>parseFloat(v).toFixed(2));
+      if(k==='Tint color')   document.getElementById('tintColor').value=v;
+    }
+    if(section==='texture'){
+      if(k==='Grain amount') setSlider('grainAmount',parseFloat(v),'grainAmountVal',v=>parseFloat(v).toFixed(2));
+      if(k==='Grain size')   setSlider('grainSize',parseInt(v),'grainSizeVal');
+      if(k==='Scan lines')   setSlider('scanLines',parseFloat(v),'scanLinesVal',v=>parseFloat(v).toFixed(2));
+      if(k==='Scan spacing') setSlider('scanSpacing',parseInt(v),'scanSpacingVal');
+    }
+    if(section==='stiff'){
+      if(k==='Frame hold')   setSlider('frameHold',parseInt(v),'frameHoldVal');
+      if(k==='Stiff mode'){
+        const el=document.getElementById('toggleStiff');
+        if(v==='on') el.classList.add('on'); else el.classList.remove('on');
+      }
+    }
+    if(section==='final'){
+      if(k==='Vignette')     setSlider('vignette',parseFloat(v),'vignetteVal',v=>parseFloat(v).toFixed(2));
+      if(k==='Letterbox')    setSlider('letterbox',parseFloat(v),'letterboxVal',v=>parseFloat(v).toFixed(3));
+    }
+    if(section==='output'){
+      if(k==='Frame rate')   setSlider('exportFps',parseInt(v),'fpsVal');
+    }
+  }
+  schedulePreview();
+  document.getElementById('statusBar').textContent='SETTINGS IMPORTED';
+  setTimeout(()=>{ if(processed) document.getElementById('statusBar').textContent='PRESS PLAY TO ANIMATE'; },2000);
+}
+
+// ── PRESETS ─────────────────────────────────────────────────────
+const presets={
+  scanner:{
+    desaturation:0.1, contrast:1.3, temperature:0, tintColor:'#667788', tintStrength:0.0,
+    brightness:0, edgeDetect:0.9, edgeDarken:0.7, posterize:5,
+    grainAmount:0.05, grainSize:1, scanLines:0.0, scanSpacing:3,
+    frameHold:2, vignette:0.15, letterbox:0.0,
+  },
+  waking:{
+    desaturation:0.2, contrast:1.1, temperature:5, tintColor:'#887766', tintStrength:0.05,
+    brightness:5, edgeDetect:0.8, edgeDarken:0.6, posterize:6,
+    grainAmount:0.1, grainSize:1, scanLines:0.0, scanSpacing:3,
+    frameHold:2, vignette:0.2, letterbox:0.0,
+  }
+};
+
+function applyPreset(name){
+  const p=presets[name];
+  if(!p)return;
+  document.querySelectorAll('.preset-chip').forEach(c=>
+    c.classList.toggle('active',c.dataset.preset===name)
+  );
+  for(const[key,val] of Object.entries(p)){
+    const el=document.getElementById(key);
+    if(!el)continue;
+    if(el.type==='color'){
+      el.value=val;
+    } else {
+      el.value=val;
+      const valSpan=document.getElementById(key+'Val');
+      if(valSpan){
+        const step=el.step||'1';
+        const decimals=step.includes('.')?step.split('.')[1].length:0;
+        valSpan.textContent=typeof val==='number'?val.toFixed(decimals):val;
+      }
+    }
+  }
+  schedulePreview();
+}
+</script>
+</body>
+</html>
